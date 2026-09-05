@@ -34,9 +34,103 @@ Assets/
         └── UxmlBindingGenerator.cs  # 代码生成器
 ```
 
-## 3. UXML 规范约束
+## 3. 绑定生成判定规则
 
-### 3.1 文件命名
+代码生成器遍历 UXML 所有节点时，依据以下规则决定是否为某个节点生成 C# 绑定代码：
+
+### 3.1 核心判定：有 `name` 属性 = 生成绑定
+
+```xml
+<!-- 有 name → 生成绑定 -->
+<ui:Button name="LoginBtn" text="登录" />        ✅ 生成 Button LoginBtn
+
+<!-- 无 name → 不生成，纯布局/装饰用途 -->
+<ui:VisualElement class="spacer" />               ❌ 跳过
+<ui:Label text="版权所有" class="footer-text" />  ❌ 跳过
+```
+
+**唯一判定条件：元素是否设置了 `name` 属性。** 没有 `name` 的节点一律跳过，不会出现在生成代码中。
+
+### 3.2 判定流程
+
+```
+遍历 UXML 所有节点
+    │
+    ▼
+该节点有 name 属性？ ─── 否 ──→ 跳过，不生成
+    │
+    是
+    ▼
+name 以 _ 开头？ ─── 是 ──→ 生成可空绑定（Optional）
+    │
+    否
+    ▼
+生成强制绑定（Required）
+```
+
+### 3.3 三种节点分类
+
+| 分类 | UXML 写法 | 生成结果 | 适用场景 |
+|------|----------|---------|---------|
+| **不绑定** | 不写 `name` | 不生成任何代码 | 纯布局容器、装饰性文本、间距占位 |
+| **强制绑定** | `name="LoginBtn"` | `protected Button LoginBtn { get; private set; }` | 需要在代码中操作的交互元素 |
+| **可选绑定** | `name="_DebugLabel"` | `protected Label DebugLabel { get; private set; }` (可为 null) | 可能动态添加/移除的调试元素 |
+
+### 3.4 实际示例对照
+
+```xml
+<ui:VisualElement name="LoginView" class="view-root">
+
+    <!-- 纯布局容器，不需要代码引用 → 不写 name → 不生成 -->
+    <ui:VisualElement class="header">
+        <!-- 需要代码修改文本 → 写 name → 生成 -->
+        <ui:Label name="TitleLabel" text="登录" />
+        <!-- 纯装饰图标 → 不写 name → 不生成 -->
+        <ui:VisualElement class="icon-decoration" />
+    </ui:VisualElement>
+
+    <ui:VisualElement class="form">
+        <!-- 需要读取输入值 → 写 name → 生成 -->
+        <ui:TextField name="UsernameInput" label="用户名" />
+        <ui:TextField name="PasswordInput" label="密码" />
+    </ui:VisualElement>
+
+    <!-- 需要注册点击事件 → 写 name → 生成 -->
+    <ui:Button name="LoginBtn" text="登录" />
+
+    <!-- 纯展示说明，不需要代码操作 → 不写 name → 不生成 -->
+    <ui:Label text="忘记密码？" class="hint-text" />
+
+    <!-- 调试用，可能被移除 → 以 _ 开头 → 生成可空绑定 -->
+    <ui:Label name="_FpsLabel" />
+
+</ui:VisualElement>
+```
+
+以上 UXML 生成的绑定代码：
+
+```csharp
+// 只有 5 个带 name 的节点生成了绑定，其余全部跳过
+protected VisualElement LoginViewRoot { get; private set; }  // name="LoginView"
+protected Label TitleLabel { get; private set; }             // name="TitleLabel"
+protected TextField UsernameInput { get; private set; }      // name="UsernameInput"
+protected TextField PasswordInput { get; private set; }      // name="PasswordInput"
+protected Button LoginBtn { get; private set; }              // name="LoginBtn"
+protected Label FpsLabel { get; private set; }               // name="_FpsLabel" (可空)
+```
+
+### 3.5 命名即契约
+
+`name` 属性在此方案中承担双重职责：
+
+1. **UI Toolkit 运行时查询键**：`root.Q<Button>("LoginBtn")` 依赖此值定位元素
+2. **代码生成的触发标记**：有 `name` = 需要代码引用 = 生成绑定
+
+这意味着 **`name` 的取舍就是开发者声明"这个元素是否需要在代码中操作"的方式**。不需要操作的元素保持匿名，UXML 更干净，生成代码更精简。
+
+## 4. UXML 规范约束
+
+### 4.1 文件命名
 
 | 类型 | 命名规则 | 示例 |
 |------|---------|------|
@@ -45,7 +139,7 @@ Assets/
 | Widget（可复用组件） | `{Name}Widget.uxml` | `ItemSlotWidget.uxml` |
 | USS 样式 | 与 UXML 同名或 `Common.uss` | `LoginView.uss` |
 
-### 3.2 元素命名规则
+### 4.2 元素命名规则
 
 所有需要在代码中引用的 VisualElement **必须** 设置 `name` 属性，命名使用 **大驼峰 + 类型后缀**：
 
@@ -66,7 +160,7 @@ Assets/
 | `GroupBox` | `Group` | `OptionsGroup` |
 | 自定义元素 | 自定义 | 按实际语义命名 |
 
-### 3.3 命名约束规则
+### 4.3 命名约束规则
 
 1. **必须使用大驼峰**：`LoginBtn`，不允许 `login_btn`、`loginBtn`、`login-btn`
 2. **必须包含类型后缀**：后缀用于代码生成器推断 C# 类型
@@ -74,7 +168,7 @@ Assets/
 4. **可选元素加 `_` 前缀**：`_DebugLabel` 表示该元素可能不存在，生成可空引用
 5. **纯布局容器不命名**：不需要代码引用的纯布局元素不设置 `name`
 
-### 3.4 UXML 模板约束
+### 4.4 UXML 模板约束
 
 每个 UXML 根节点必须包含以下属性：
 
@@ -88,7 +182,7 @@ Assets/
 </ui:UXML>
 ```
 
-### 3.5 UXML 示例
+### 4.5 UXML 示例
 
 ```xml
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
@@ -116,9 +210,9 @@ Assets/
 </ui:UXML>
 ```
 
-## 4. 自动生成绑定代码
+## 5. 自动生成绑定代码
 
-### 4.1 生成规则
+### 5.1 生成规则
 
 代码生成器读取 UXML 文件，为每个带 `name` 属性的元素生成强类型引用：
 
@@ -142,7 +236,7 @@ Assets/
 | `<ui:RadioButtonGroup name="X">` | `RadioButtonGroup X` |
 | 其他 / 未识别 | `VisualElement X` |
 
-### 4.2 生成的代码示例
+### 5.2 生成的代码示例
 
 输入 `LoginView.uxml`（上文示例），生成 `LoginView.Gen.cs`：
 
@@ -191,7 +285,7 @@ public partial class LoginView
 }
 ```
 
-### 4.3 可选元素（以 `_` 前缀命名）
+### 5.3 可选元素（以 `_` 前缀命名）
 
 对于 `name="_DebugLabel"` 的元素，生成可空查询且不做断言：
 
@@ -201,11 +295,11 @@ protected Label DebugLabel { get; private set; } // 可能为 null
 
 绑定时不会报错，调用方自行判空。
 
-### 4.4 根元素命名冲突处理
+### 5.4 根元素命名冲突处理
 
 当根容器 `name` 与类名相同时，生成属性名自动加 `Root` 后缀，避免与类名冲突。
 
-## 5. View 基类设计
+## 6. View 基类设计
 
 ```csharp
 using UnityEngine;
@@ -255,7 +349,7 @@ public abstract class ViewBase
 }
 ```
 
-## 6. 业务层使用示例
+## 7. 业务层使用示例
 
 手写的 `LoginView.cs`（与 `LoginView.Gen.cs` 组成 partial class）：
 
@@ -309,15 +403,15 @@ public partial class LoginView : ViewBase
 }
 ```
 
-## 7. 代码生成器工作流
+## 8. 代码生成器工作流
 
-### 7.1 触发方式
+### 8.1 触发方式
 
 1. **保存 UXML 时自动触发**：通过 `AssetPostprocessor` 监听 `.uxml` 文件变更
 2. **手动触发**：菜单 `Tools/UI Toolkit/Generate All Bindings`
 3. **单文件生成**：右键 UXML 文件 → `Generate Binding Code`
 
-### 7.2 生成流程
+### 8.2 生成流程
 
 ```
 UXML 文件变更
@@ -340,7 +434,7 @@ UXML 文件变更
 写入 Gen/ 目录，触发编译
 ```
 
-### 7.3 校验规则
+### 8.3 校验规则
 
 | 规则 | 级别 | 说明 |
 |------|------|------|
@@ -350,14 +444,14 @@ UXML 文件变更
 | 根容器存在 | Error | 根 `VisualElement` 必须有 `name` |
 | 文件名匹配 | Warning | 根元素 `name` 应与文件名（去后缀）一致 |
 
-## 8. .gitignore 策略
+## 9. .gitignore 策略
 
 生成的 `*.Gen.cs` 文件 **应该提交到版本控制**，理由：
 - 确保 CI/CD 和其他开发者无需运行生成器即可编译
 - 代码审查时可以看到 UI 结构变化
 - 生成代码量小且稳定，不会产生无意义 diff
 
-## 9. AI 协作工作流
+## 10. AI 协作工作流
 
 ```
 AI 根据需求编写 UXML + USS
