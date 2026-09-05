@@ -210,9 +210,283 @@ protected Label FpsLabel { get; private set; }               // name="_FpsLabel"
 </ui:UXML>
 ```
 
-## 5. 自动生成绑定代码
+## 5. USS 样式规范
 
-### 5.1 生成规则
+### 5.1 文件组织
+
+| 文件类型 | 命名规则 | 作用域 | 示例 |
+|---------|---------|--------|------|
+| 全局样式 | `Common.uss` | 所有 View 共享的基础样式 | 颜色变量、字体、通用按钮样式 |
+| 主题变量 | `Theme.uss` | CSS 自定义属性（变量）集中定义 | `--color-primary`, `--font-size-body` |
+| View 样式 | 与 UXML 同名 | 仅在对应 View 内生效 | `LoginView.uss` |
+| Widget 样式 | 与 Widget 同名 | 仅在对应 Widget 内生效 | `ItemSlotWidget.uss` |
+
+USS 文件在 UXML 中通过 `<Style>` 标签引入：
+
+```xml
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="../../Styles/Common.uss" />
+    <Style src="../../Styles/LoginView.uss" />
+    <ui:VisualElement name="LoginView" class="view-root">
+        ...
+    </ui:VisualElement>
+</ui:UXML>
+```
+
+### 5.2 选择器命名规范
+
+采用 **组件名-元素-状态** 的层级命名法（类似 BEM），全部使用 **小写短横线连接**：
+
+```
+.{component}-{element}--{state}
+```
+
+| 层级 | 说明 | 示例 |
+|------|------|------|
+| 组件名 | View/Widget 名称（小写短横线） | `.login-view` |
+| 元素 | 组件内的子部件 | `.login-view-header` |
+| 状态 | 交互或业务状态修饰 | `.login-view-btn--disabled` |
+
+#### 具体规则
+
+```css
+/* ✅ 正确：组件级根样式 */
+.login-view { }
+
+/* ✅ 正确：子元素样式 */
+.login-view-header { }
+.login-view-form { }
+
+/* ✅ 正确：状态修饰 */
+.login-view-btn--primary { }
+.login-view-btn--disabled { }
+.login-view-input--error { }
+
+/* ✅ 正确：通用/原子样式 */
+.text-center { }
+.hidden { }
+.flex-row { }
+
+/* ❌ 错误：大驼峰（大驼峰仅用于 name 属性，不用于 class） */
+.LoginViewHeader { }
+
+/* ❌ 错误：下划线连接 */
+.login_view_header { }
+```
+
+### 5.3 USS 变量规范
+
+所有可配置的视觉属性统一提取为 USS 变量，集中在 `Theme.uss` 中定义：
+
+```css
+/* Theme.uss — 主题变量 */
+:root {
+    /* 颜色 */
+    --color-primary: #4A90D9;
+    --color-primary-hover: #5BA0E9;
+    --color-secondary: #6C757D;
+    --color-danger: #DC3545;
+    --color-success: #28A745;
+    --color-bg: #1E1E2E;
+    --color-bg-secondary: #2A2A3E;
+    --color-text: #FFFFFF;
+    --color-text-secondary: #AAAAAA;
+    --color-border: #3A3A4E;
+
+    /* 字号 */
+    --font-size-h1: 28px;
+    --font-size-h2: 22px;
+    --font-size-body: 16px;
+    --font-size-caption: 12px;
+
+    /* 间距 */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    /* 圆角 */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    --radius-full: 9999px;
+}
+```
+
+业务 USS 中通过 `var()` 引用，禁止直接写硬编码值：
+
+```css
+/* LoginView.uss */
+.login-view-btn--primary {
+    background-color: var(--color-primary);      /* ✅ 引用变量 */
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-body);
+}
+
+.login-view-btn--primary:hover {
+    background-color: var(--color-primary-hover); /* ✅ hover 状态变量 */
+}
+
+.login-view-error {
+    color: #DC3545;                               /* ❌ 禁止硬编码颜色 */
+    color: var(--color-danger);                    /* ✅ 正确写法 */
+}
+```
+
+### 5.4 常用样式模式
+
+```css
+/* 隐藏元素 */
+.hidden {
+    display: none;
+}
+
+/* Flex 布局工具类 */
+.flex-row {
+    flex-direction: row;
+}
+
+.flex-column {
+    flex-direction: column;
+}
+
+.flex-center {
+    align-items: center;
+    justify-content: center;
+}
+
+.flex-grow {
+    flex-grow: 1;
+}
+
+/* View 根容器基础样式 */
+.view-root {
+    flex-grow: 1;
+    background-color: var(--color-bg);
+}
+```
+
+### 5.5 USS 选择器优先级
+
+UI Toolkit 的 USS 选择器优先级从高到低：
+
+| 优先级 | 选择器类型 | 示例 | 说明 |
+|--------|-----------|------|------|
+| 最高 | C# 内联样式 | `element.style.color = Color.red;` | 代码直接设置，覆盖一切 USS |
+| 高 | `#name` 选择器 | `#LoginBtn { }` | 按 `name` 属性匹配 |
+| 中 | `.class` 选择器 | `.btn-primary { }` | 按 `class` 属性匹配 |
+| 低 | 类型选择器 | `Button { }` | 按元素类型匹配 |
+| 最低 | 通配符 | `* { }` | 匹配所有元素 |
+
+**同优先级时**：后加载的 USS 文件覆盖先加载的，同文件中后出现的规则覆盖先出现的。
+
+**多个 class 时**：选择器匹配的 class 数量越多，优先级越高：
+
+```css
+.btn { color: white; }                  /* 1 个 class → 较低 */
+.btn.btn-primary { color: blue; }       /* 2 个 class → 较高，生效 */
+```
+
+## 6. 样式调试与排查
+
+UX / UI 开发者排查样式问题时，需要快速定位"某个节点上生效了哪些样式、来自哪里、为什么被覆盖"。以下是完整的排查工具链和方法。
+
+### 6.1 UI Toolkit Debugger（首选工具）
+
+Unity 内置的可视化调试器，功能等同于浏览器 DevTools：
+
+**打开方式**：`Window → UI Toolkit → Debugger`
+
+**核心功能**：
+
+| 功能 | 操作 | 作用 |
+|------|------|------|
+| **Pick Element** | 点击左上角吸管图标，然后点击界面上的元素 | 直接选中要检查的节点 |
+| **Hierarchy 面板** | 左侧树形结构 | 查看完整的 VisualElement 层级 |
+| **Styles 面板** | 右侧样式列表 | 查看节点上所有生效的样式属性 |
+| **Layout 面板** | 右侧布局信息 | 查看 margin/border/padding/content 盒模型 |
+| **Matching Selectors** | Styles 面板顶部 | 显示所有匹配该节点的 USS 选择器及来源文件 |
+
+**排查步骤**：
+
+```
+1. 打开 Debugger → 点击 Pick Element → 点击有问题的 UI 元素
+                          │
+                          ▼
+2. 查看 Matching Selectors 区域
+   → 列出所有匹配的选择器，按优先级排序
+   → 被覆盖的属性显示删除线
+   → 每条规则右侧显示来源 USS 文件名和行号
+                          │
+                          ▼
+3. 找到目标属性
+   → 如果属性值不符合预期：检查是否被更高优先级的选择器覆盖
+   → 如果属性不存在：检查选择器是否正确匹配（class 拼写、层级关系）
+   → 如果显示 "inline"：说明是 C# 代码直接设置的，优先级最高
+```
+
+### 6.2 快速定位节点的方法
+
+| 方法 | 适用场景 | 操作 |
+|------|---------|------|
+| **Pick Element（吸管工具）** | 能看到元素、不知道在树中的位置 | Debugger 左上角吸管 → 点击元素 |
+| **按 name 搜索** | 知道元素的 `name` | Debugger 搜索框输入 name 值 |
+| **按 class 搜索** | 知道元素的 class | Debugger 搜索框输入 `.class-name` |
+| **Hierarchy 展开** | 排查层级嵌套问题 | 在 Debugger 左侧手动展开树 |
+
+### 6.3 常见问题排查表
+
+| 现象 | 可能原因 | 排查方法 |
+|------|---------|---------|
+| 样式完全不生效 | USS 文件未被引入 | 检查 UXML 中是否有 `<Style src="...">` 引用该 USS |
+| 样式被覆盖 | 更高优先级的选择器存在 | Debugger → Matching Selectors 查看优先级排序 |
+| 颜色/字号不对 | 变量值被覆盖或拼写错误 | 检查 `Theme.uss` 中变量定义，Debugger 中查看 computed value |
+| 元素不可见 | `display: none` 或 `visibility: hidden` 或 `opacity: 0` | Debugger → Styles → 检查 display/visibility/opacity |
+| 布局位置不对 | Flex 属性设置错误 | Debugger → Layout 面板查看盒模型数值 |
+| hover 不生效 | `:hover` 伪类选择器优先级不够 | 确认没有更高优先级的选择器覆盖 hover 状态 |
+| 样式只在某平台不生效 | C# 代码运行时覆盖了样式 | 搜索代码中 `.style.xxx =` 的赋值，inline 样式优先级最高 |
+
+### 6.4 C# 运行时样式调试
+
+当 USS 排查不出问题时，可能是 C# 代码在运行时修改了样式。使用以下代码查看节点的实际计算样式：
+
+```csharp
+#if UNITY_EDITOR
+[ContextMenu("Dump Style Info")]
+private void DumpStyleInfo()
+{
+    var element = LoginBtn; // 替换为需要检查的元素
+    Debug.Log($"=== Style Debug: {element.name} ===");
+    Debug.Log($"  display: {element.resolvedStyle.display}");
+    Debug.Log($"  visibility: {element.resolvedStyle.visibility}");
+    Debug.Log($"  opacity: {element.resolvedStyle.opacity}");
+    Debug.Log($"  color: {element.resolvedStyle.color}");
+    Debug.Log($"  backgroundColor: {element.resolvedStyle.backgroundColor}");
+    Debug.Log($"  fontSize: {element.resolvedStyle.fontSize}");
+    Debug.Log($"  width: {element.resolvedStyle.width}");
+    Debug.Log($"  height: {element.resolvedStyle.height}");
+    Debug.Log($"  classes: {string.Join(", ", element.GetClasses())}");
+    Debug.Log($"  inline style count: {element.style.color.keyword}");
+}
+#endif
+```
+
+### 6.5 样式来源标识速查
+
+在 Debugger 的 Styles 面板中，每条属性右侧都会标注来源：
+
+| 来源标识 | 含义 | 修改方式 |
+|---------|------|---------|
+| `Common.uss:42` | 来自 USS 文件第 42 行 | 修改对应 USS 文件 |
+| `LoginView.uss:15` | 来自 View 专属 USS | 修改对应 USS 文件 |
+| `inline` | C# 代码 `element.style.xxx = ...` 设置 | 搜索代码中对该元素的 `.style` 赋值 |
+| `inherited` | 从父节点继承（如 color、font-size） | 检查父节点的样式 |
+| `initial` | USS 未设置，使用默认值 | 在 USS 中为该选择器添加属性 |
+
+## 7. 自动生成绑定代码
+
+### 7.1 生成规则
 
 代码生成器读取 UXML 文件，为每个带 `name` 属性的元素生成强类型引用：
 
@@ -236,7 +510,7 @@ protected Label FpsLabel { get; private set; }               // name="_FpsLabel"
 | `<ui:RadioButtonGroup name="X">` | `RadioButtonGroup X` |
 | 其他 / 未识别 | `VisualElement X` |
 
-### 5.2 生成的代码示例
+### 7.2 生成的代码示例
 
 输入 `LoginView.uxml`（上文示例），生成 `LoginView.Gen.cs`：
 
@@ -285,7 +559,7 @@ public partial class LoginView
 }
 ```
 
-### 5.3 可选元素（以 `_` 前缀命名）
+### 7.3 可选元素（以 `_` 前缀命名）
 
 对于 `name="_DebugLabel"` 的元素，生成可空查询且不做断言：
 
@@ -295,11 +569,11 @@ protected Label DebugLabel { get; private set; } // 可能为 null
 
 绑定时不会报错，调用方自行判空。
 
-### 5.4 根元素命名冲突处理
+### 7.4 根元素命名冲突处理
 
 当根容器 `name` 与类名相同时，生成属性名自动加 `Root` 后缀，避免与类名冲突。
 
-## 6. View 基类设计
+## 8. View 基类设计
 
 ```csharp
 using UnityEngine;
@@ -349,7 +623,7 @@ public abstract class ViewBase
 }
 ```
 
-## 7. 业务层使用示例
+## 9. 业务层使用示例
 
 手写的 `LoginView.cs`（与 `LoginView.Gen.cs` 组成 partial class）：
 
@@ -403,15 +677,15 @@ public partial class LoginView : ViewBase
 }
 ```
 
-## 8. 代码生成器工作流
+## 10. 代码生成器工作流
 
-### 8.1 触发方式
+### 10.1 触发方式
 
 1. **保存 UXML 时自动触发**：通过 `AssetPostprocessor` 监听 `.uxml` 文件变更
 2. **手动触发**：菜单 `Tools/UI Toolkit/Generate All Bindings`
 3. **单文件生成**：右键 UXML 文件 → `Generate Binding Code`
 
-### 8.2 生成流程
+### 10.2 生成流程
 
 ```
 UXML 文件变更
@@ -434,7 +708,7 @@ UXML 文件变更
 写入 Gen/ 目录，触发编译
 ```
 
-### 8.3 校验规则
+### 10.3 校验规则
 
 | 规则 | 级别 | 说明 |
 |------|------|------|
@@ -444,14 +718,14 @@ UXML 文件变更
 | 根容器存在 | Error | 根 `VisualElement` 必须有 `name` |
 | 文件名匹配 | Warning | 根元素 `name` 应与文件名（去后缀）一致 |
 
-## 9. .gitignore 策略
+## 11. .gitignore 策略
 
 生成的 `*.Gen.cs` 文件 **应该提交到版本控制**，理由：
 - 确保 CI/CD 和其他开发者无需运行生成器即可编译
 - 代码审查时可以看到 UI 结构变化
 - 生成代码量小且稳定，不会产生无意义 diff
 
-## 10. AI 协作工作流
+## 12. AI 协作工作流
 
 ```
 AI 根据需求编写 UXML + USS
