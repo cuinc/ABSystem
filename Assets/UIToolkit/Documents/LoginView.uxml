@@ -1,0 +1,23 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:VisualElement name="LoginView" class="view-root">
+
+        <ui:VisualElement name="HeaderContainer" class="header">
+            <ui:Label name="TitleLabel" text="登录" class="title" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="FormContainer" class="form">
+            <ui:TextField name="UsernameInput" label="用户名" />
+            <ui:TextField name="PasswordInput" label="密码" />
+            <ui:Toggle name="RememberToggle" label="记住密码" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="ActionContainer" class="actions">
+            <ui:Button name="LoginBtn" text="登录" class="btn-primary" />
+            <ui:Button name="RegisterBtn" text="注册" class="btn-secondary" />
+        </ui:VisualElement>
+
+        <ui:Label name="ErrorLabel" class="error-text" />
+        <ui:VisualElement name="LoadingContainer" class="loading" />
+
+    </ui:VisualElement>
+</ui:UXML>
